@@ -1,0 +1,31 @@
+name: Hands-Free RTL Verification Bot
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  verify_silicon:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Clone Repository Files
+      uses: actions/checkout@v4
+
+    - name: Install Verilator Compiler & Tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y verilator python3
+
+    - name: Run Automated Lint & Structural Check
+      run: |
+        echo "The Bot is scanning your fabric code for structural or syntax flaws..."
+        if [ -f src/secure_fabric_top.v ]; then
+          verilator --lint-only -Wall src/secure_fabric_top.v
+          echo "✅ SUCCESS: No code errors or structural bugs detected!"
+        else
+          echo "❌ ERROR: src/secure_fabric_top.v not found in repository."
+          exit 1
+        fi
