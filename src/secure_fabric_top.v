@@ -1,5 +1,5 @@
 // secure_fabric_top.v
-// Core control and data-path skeleton with FSM synchronization
+// Expanded FSM with 128-bit block buffering interface
 
 module secure_fabric_top (
     input  wire        clk,           // Master System Clock
@@ -23,25 +23,44 @@ module secure_fabric_top (
     reg [1:0] current_state;
     reg [1:0] next_state;
 
-    // Internal registers
-    reg [31:0] lattice_noise;
+    // 128-bit internal block buffer split into four 32-bit chunks
+    reg [31:0] block_reg_0;
+    reg [31:0] block_reg_1;
+    reg [31:0] block_reg_2;
+    reg [31:0] block_reg_3;
+    
+    // Counter to track our 4 loading cycles
+    reg [1:0]  load_counter;
 
-    // 1. FSM State Register (Sequential)
+    // 1. FSM & Data Buffering Register Stage (Sequential)
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             current_state <= STATE_IDLE;
-            lattice_noise <= 32'h0;
+            load_counter  <= 2'b00;
+            block_reg_0   <= 32'h0;
+            block_reg_1   <= 32'h0;
+            block_reg_2   <= 32'h0;
+            block_reg_3   <= 32'h0;
         end else begin
             current_state <= next_state;
-            if (current_state == STATE_PROCESS) begin
-                lattice_noise <= lattice_noise ^ cpu_data_in; // Injection cycle
+            
+            // Multi-cycle loading buffer mechanism
+            if (current_state == STATE_LOAD && cpu_valid) begin
+                load_counter <= load_counter + 1'b1;
+                case (load_counter)
+                    2'b00: block_reg_0 <= cpu_data_in;
+                    2'b01: block_reg_1 <= cpu_data_in;
+                    2'b10: block_reg_2 <= cpu_data_in;
+                    2'b11: block_reg_3 <= cpu_data_in;
+                endcase
+            end else if (current_state == STATE_IDLE) begin
+                load_counter <= 2'b00; // Reset counter when sitting idle
             end
         end
     end
 
-    // 2. Next State Logic & Outputs (Combinational)
+    // 2. Next State Logic (Combinational)
     always @(*) begin
-        // Defaults
         next_state   = current_state;
         mem_data_out = 32'h0;
         mem_valid    = 1'b0;
@@ -54,7 +73,10 @@ module secure_fabric_top (
             end
             
             STATE_LOAD: begin
-                next_state = STATE_PROCESS;
+                // Only move to process once all 4 chunks (128-bits total) are buffered
+                if (load_counter == 2'b11 && cpu_valid) begin
+                    next_state = STATE_PROCESS;
+                end
             end
             
             STATE_PROCESS: begin
@@ -62,7 +84,8 @@ module secure_fabric_top (
             end
             
             STATE_DONE: begin
-                mem_data_out = lattice_noise;
+                // Output the first processed chunk as a baseline validation
+                mem_data_out = block_reg_0;
                 mem_valid    = 1'b1;
                 next_state   = STATE_IDLE;
             end
