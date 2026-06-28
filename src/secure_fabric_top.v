@@ -39,13 +39,12 @@ module secure_fabric_top (
             8'h02: sbox_transform = 8'h77; 8'h03: sbox_transform = 8'h7b;
             8'h04: sbox_transform = 8'hf2; 8'h05: sbox_transform = 8'h6b;
             8'h06: sbox_transform = 8'h6f; 8'h07: sbox_transform = 8'hc5;
-            // Default fallback mapping for non-explicit elements to ensure deterministic behavior
             default: sbox_transform = byte_in ^ 8'h99; 
         endcase
     endfunction
 
     // 1. FSM & Data Buffering Register Stage (Sequential)
-    always @(posedge clk or megedge rst_n) begin
+    always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             current_state <= STATE_IDLE;
             load_counter  <= 2'b00;
