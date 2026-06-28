@@ -4,6 +4,12 @@
 
 `timescale 1ns/1ps
 
+// Include the sub-module file explicitly for the compilation pipeline
+`include "secure_fabric_core.v"
+
+module tb_secure_fabric;
+// ... (rest of your testbench code remains exactly the same)
+
 module tb_secure_fabric;
 
     // Inputs
