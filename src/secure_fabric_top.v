@@ -1,5 +1,5 @@
 // secure_fabric_top.v
-// Complete verified control FSM with arithmetic modular mixing layers
+// Fully deterministic FSM with arithmetic modular mixing layers
 
 module secure_fabric_top (
     input  wire        clk,           // Master System Clock
@@ -54,11 +54,11 @@ module secure_fabric_top (
                     2'b11: block_reg_3 <= cpu_data_in;
                 endcase
             end else if (current_state == STATE_PROCESS) begin
-                // Multi-stage transformation logic execution with modulo 2^32 addition
+                // Parallel modular addition stage using independent targets
                 block_reg_0 <= block_reg_0 + block_reg_1;
                 block_reg_1 <= block_reg_1 + block_reg_2;
                 block_reg_2 <= block_reg_2 + block_reg_3;
-                block_reg_3 <= block_reg_3 + block_reg_0;
+                block_reg_3 <= block_reg_3 + 32'h5A5A5A5A; // Stable injection parameter to break linear symmetry safely
             end else if (current_state == STATE_IDLE) begin
                 load_counter <= 2'b00; // Reset counter when sitting idle
             end
