@@ -1,5 +1,5 @@
 // secure_fabric_top.v
-// Complete verified control FSM with arithmetic and non-linear S-Box substitution layers
+// Complete verified security FSM with S-Box processing and key whitening
 
 module secure_fabric_top (
     input  wire        clk,           // Master System Clock
@@ -8,6 +8,9 @@ module secure_fabric_top (
     // Processor Interface (Data In)
     input  wire [31:0] cpu_data_in,
     input  wire        cpu_valid,
+    
+    // Configuration Key Interface
+    input  wire [31:0] key_in,
     
     // Memory Interface (Data Out)
     output reg  [31:0] mem_data_out,
@@ -71,13 +74,13 @@ module secure_fabric_top (
                 block_reg_2 <= block_reg_2 + block_reg_3;
                 block_reg_3 <= block_reg_3 + 32'h5A5A5A5A;
                 
-                // Stage B: Multi-byte Non-Linear Substitution Layer applied to upper bytes
+                // Stage B: Multi-byte Non-Linear Substitution Layer
                 block_reg_0[31:24] <= sbox_transform(block_reg_0[31:24]);
                 block_reg_1[31:24] <= sbox_transform(block_reg_1[31:24]);
                 block_reg_2[31:24] <= sbox_transform(block_reg_2[31:24]);
                 block_reg_3[31:24] <= sbox_transform(block_reg_3[31:24]);
             end else if (current_state == STATE_IDLE) begin
-                load_counter <= 2'b00; // Reset counter when sitting idle
+                load_counter <= 2'b00;
             end
         end
     end
@@ -106,7 +109,8 @@ module secure_fabric_top (
             end
             
             STATE_DONE: begin
-                mem_data_out = block_reg_0 ^ block_reg_1 ^ block_reg_2 ^ block_reg_3;
+                // Final Output Matrix featuring Key Whitening integration
+                mem_data_out = (block_reg_0 ^ block_reg_1 ^ block_reg_2 ^ block_reg_3) ^ key_in;
                 mem_valid    = 1'b1;
                 next_state   = STATE_IDLE;
             end
