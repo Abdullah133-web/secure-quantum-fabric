@@ -23,10 +23,11 @@ jobs:
       run: |
         echo "The Bot is scanning your fabric code for structural or syntax flaws..."
         if [ -f src/secure_fabric_top.v ]; then
-          # Added -Isrc to find all modules and included all source files in the check
-          verilator --lint-only -Wall -Isrc src/*.v --top-module secure_fabric_top
+          # Pass only the core hardware modules to the linter, bypassing the testbench file
+          verilator --lint-only -Wall src/secure_fabric_top.v src/secure_fabric_core.v --top-module secure_fabric_top
           echo "✅ SUCCESS: No code errors or structural bugs detected!"
         else
           echo "❌ ERROR: src/secure_fabric_top.v not found in repository."
           exit 1
         fi
+        
