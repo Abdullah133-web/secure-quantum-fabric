@@ -1,3 +1,4 @@
+/* verilator lint_off DECLFILENAME */
 // secure_fabric_top.v
 // Memory-Mapped Bus Interconnect Wrapper for RISC-V Processor Integration
 
@@ -31,6 +32,11 @@ module secure_fabric_top (
     wire [31:0] core_mem_out;
     wire        core_mem_valid;
 
+    // Suppress unused address bits warning by grouping them into a dummy wire
+    /* verilator lint_off UNUSED */
+    wire [31:0] unused_bits = bus_addr;
+    /* verilator lint_on UNUSED */
+
     // Instantiate our verified data-path core underneath the bus layer
     secure_fabric_core core_inst (
         .clk(clk),
@@ -61,7 +67,7 @@ module secure_fabric_top (
                         internal_valid <= 1'b1; // Trigger core loading step
                     end
                     default: ;
-                endcase
+                </case>
             end
             
             // Capture completion flag into control register Status Bit (Bit 1)
@@ -87,7 +93,7 @@ module secure_fabric_top (
                     ADDR_DATA: bus_rdata = reg_data_in;
                     ADDR_OUT:  bus_rdata = core_mem_out;
                     default:   bus_rdata = 32'h0;
-                endcase
+                </case>
             end
         end
     end
@@ -179,3 +185,4 @@ module secure_fabric_core (
         endcase
     end
 endmodule
+/* verilator lint_on DECLFILENAME */
