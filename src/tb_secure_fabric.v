@@ -1,14 +1,7 @@
-// Test change
 // tb_secure_fabric.v
 // System Bus Testbench for Memory-Mapped RISC-V Integration
 
 `timescale 1ns/1ps
-
-// Include the sub-module file explicitly for the compilation pipeline
-`include "secure_fabric_core.v"
-
-module tb_secure_fabric;
-// ... (rest of your testbench code remains exactly the same)
 
 module tb_secure_fabric;
 
@@ -70,7 +63,7 @@ module tb_secure_fabric;
         bus_write = 1'b0;
         bus_sel   = 1'b0;
         
-        // Wait 3 cycles for hardware computation state to finalize
+        // Wait for hardware computation state to finalize
         #60;
         
         // 3. Read back final output calculation (Read from offset 0xC)
