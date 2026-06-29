@@ -1,5 +1,5 @@
 // tb_secure_fabric.v
-// System Bus Testbench for Memory-Mapped RISC-V Integration
+// System Bus Testbench for Iterative Multi-Cycle Verification
 
 `timescale 1ns/1ps
 
@@ -29,7 +29,7 @@ module tb_secure_fabric;
         .bus_ready(bus_ready)
     );
 
-    // Clock Generation (20ns period)
+    // Clock Generation (50MHz / 20ns period)
     always #10 clk = ~clk;
 
     initial begin
@@ -41,7 +41,7 @@ module tb_secure_fabric;
         bus_write = 1'b0;
         bus_sel   = 1'b0;
 
-        // Reset Sequence
+        // Assert System Reset
         #40;
         rst_n = 1'b1;
         #20;
@@ -59,19 +59,25 @@ module tb_secure_fabric;
         bus_addr  = 32'h8; bus_wdata = 32'h33333333; #20;
         bus_addr  = 32'h8; bus_wdata = 32'h44444444; #20;
 
-        // Turn off bus writes
+        // De-assert bus controls immediately after the last block is loaded
         bus_write = 1'b0;
         bus_sel   = 1'b0;
         
-        // Wait for hardware computation state to finalize
-        #60;
+        // 3. Dynamic Cycle Sync: Wait for the 10-round computation loop to process
+        // 10 processing rounds + state transitions = approx 240ns
+        #240;
         
-        // 3. Read back final output calculation (Read from offset 0xC)
+        // 4. Read back final output calculation (Read from offset 0xC)
         bus_sel   = 1'b1;
         bus_addr  = 32'hC;
         #20;
         
-        $display("SUCCESS: Bus Verification Complete. Read Data = %h", bus_rdata);
+        // Check verification output
+        if (bus_ready) begin
+            $display("SUCCESS: Multi-Cycle Verification Complete. Read Data = %h", bus_rdata);
+        end else begin
+            $display("ERROR: Core was not ready when bus read was attempted.");
+        end
         
         #20;
         $finish;
