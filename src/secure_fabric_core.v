@@ -1,5 +1,5 @@
 // secure_fabric_core.v
-// Multi-Cycle Iterative Core for Advanced Security Diffusion
+// Crypto-Agile Multi-Cycle Core with Programmable Round Scalability
 
 module secure_fabric_core (
     input  wire        clk,
@@ -7,6 +7,7 @@ module secure_fabric_core (
     input  wire [31:0] cpu_data_in,
     input  wire        cpu_valid,
     input  wire [31:0] key_in,
+    input  wire [3:0]  runtime_rounds, // New input from bus configuration
     output reg  [31:0] mem_data_out,
     output reg         mem_valid
 );
@@ -17,14 +18,11 @@ module secure_fabric_core (
     localparam STATE_PROCESS = 2'b10;
     localparam STATE_DONE    = 2'b11;
 
-    // Cryptographic Configuration
-    localparam TOTAL_ROUNDS  = 4'd10; // 10-round iterative processing depth
-
     reg [1:0]  current_state;
     reg [1:0]  next_state;
     reg [31:0] block_reg_0, block_reg_1, block_reg_2, block_reg_3;
     reg [1:0]  load_counter;
-    reg [3:0]  round_counter; // Fixed bit-range syntax [MSB:LSB]
+    reg [3:0]  round_counter;
 
     // Non-linear Substitution Box (S-Box) Transformation Function
     function [7:0] sbox_transform (input [7:0] byte_in);
@@ -50,7 +48,6 @@ module secure_fabric_core (
         end else begin
             current_state <= next_state;
             
-            // Register Data Loading Phase
             if (current_state == STATE_LOAD && cpu_valid) begin
                 load_counter <= load_counter + 1'b1;
                 case (load_counter)
@@ -60,62 +57,20 @@ module secure_fabric_core (
                     2'b11: block_reg_3 <= cpu_data_in;
                 endcase
             end 
-            
-            // Multi-Cycle Iterative Processing Phase
             else if (current_state == STATE_PROCESS) begin
                 round_counter <= round_counter + 1'b1;
                 
-                // Linear Mix Column & Diffusion Step
                 block_reg_0 <= block_reg_0 + block_reg_1;
                 block_reg_1 <= block_reg_1 + block_reg_2;
                 block_reg_2 <= block_reg_2 + block_reg_3;
                 block_reg_3 <= block_reg_3 + 32'h5A5A5A5A;
                 
-                // Non-linear Byte Substitution Step
                 block_reg_0[31:24] <= sbox_transform(block_reg_0[31:24]);
                 block_reg_1[31:24] <= sbox_transform(block_reg_1[31:24]);
                 block_reg_2[31:24] <= sbox_transform(block_reg_2[31:24]);
                 block_reg_3[31:24] <= sbox_transform(block_reg_3[31:24]);
             end 
-            
-            // Reset Counters on Return to Idle
             else if (current_state == STATE_IDLE) begin
                 load_counter  <= 2'b00;
                 round_counter <= 4'd0;
-            end
-        end
-    end
-
-    // Combinational Next-State Logic Layer
-    always @(*) begin
-        next_state   = current_state;
-        mem_data_out = 32'h0;
-        mem_valid    = 1'b0;
-        
-        case (current_state)
-            STATE_IDLE: begin
-                if (cpu_valid) next_state = STATE_LOAD;
-            end
-            
-            STATE_LOAD: begin
-                if (load_counter == 2'b11 && cpu_valid) next_state = STATE_PROCESS;
-            end
-            
-            STATE_PROCESS: begin
-                // Hold execution loop until 10 structural rounds are fully executed
-                if (round_counter == (TOTAL_ROUNDS - 1'b1)) begin
-                    next_state = STATE_DONE;
-                end
-            end
-            
-            STATE_DONE: begin
-                mem_data_out = (block_reg_0 ^ block_reg_1 ^ block_reg_2 ^ block_reg_3) ^ key_in;
-                mem_valid    = 1'b1;
-                next_state   = STATE_IDLE;
-            end
-            
-            default: next_state = STATE_IDLE;
-        endcase
-    end
-
-endmodule
+                

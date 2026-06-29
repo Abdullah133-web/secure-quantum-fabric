@@ -1,97 +1,87 @@
 // secure_fabric_top.v
-// Memory-Mapped Bus Interconnect Wrapper for RISC-V Processor Integration
+// System Bus Interconnect with Agile Round Management Register
 
 module secure_fabric_top (
-    input  wire        clk,           // Master System Clock
-    input  wire        rst_n,         // Active-Low Reset
-    
-    // Simple Processor System Bus Interface
-    input  wire [31:0] bus_addr,      // Memory Address Bus
-    input  wire [31:0] bus_wdata,     // Write Data Bus
-    input  wire        bus_write,     // Write Enable Signal
-    input  wire        bus_sel,       // Module Select (Chip Select)
-    
-    output reg  [31:0] bus_rdata,     // Read Data Bus
-    output reg         bus_ready      // Transfer Acknowledge
+    input  wire        clk,
+    input  wire        rst_n,
+    input  wire [31:0] bus_addr,
+    input  wire [31:0] bus_wdata,
+    input  wire        bus_write,
+    input  wire        bus_sel,
+    output reg  [31:0] bus_rdata,
+    output reg         bus_ready
 );
 
-    // Memory Map Definitions
-    localparam ADDR_CTRL = 2'b00;     // 0x0 : Control/Status
-    localparam ADDR_KEY  = 2'b01;     // 0x4 : Whitening Key
-    localparam ADDR_DATA = 2'b10;     // 0x8 : Data Input Mailbox
-    localparam ADDR_OUT  = 2'b11;     // 0xC : Processed Output
-
-    // Internal Control/Config Registers
-    reg [31:0] reg_ctrl;
+    // Internal Bus Register File
+    reg [31:0] reg_control;
     reg [31:0] reg_key;
-    reg [31:0] reg_data_in;
-    reg        internal_valid;
+    reg [31:0] reg_mailbox;
+    reg [3:0]  reg_config_rounds; // Internal configuration register
 
-    // Core Fabric Wire Connections
-    wire [31:0] core_mem_out;
-    wire        core_mem_valid;
+    wire [31:0] core_out;
+    wire        core_ready;
+    reg         core_valid_pulse;
 
-    // Suppress unused address bits warning cleanly by picking out bits [3:2]
-    wire [1:0] addr_select = bus_addr[3:2];
-
-    // Instantiate our verified data-path core underneath the bus layer
-    secure_fabric_core core_inst (
+    // Connect Agile Multi-Cycle Security Engine
+    secure_fabric_core core_eng (
         .clk(clk),
         .rst_n(rst_n),
-        .cpu_data_in(reg_data_in),
-        .cpu_valid(internal_valid),
+        .cpu_data_in(reg_mailbox),
+        .cpu_valid(core_valid_pulse),
         .key_in(reg_key),
-        .mem_data_out(core_mem_out),
-        .mem_valid(core_mem_valid)
+        .runtime_rounds(reg_config_rounds), // Pass register value directly to core
+        .mem_data_out(core_out),
+        .mem_valid(core_ready)
     );
 
-    // 1. Bus Write Operations (CPU writing to registers)
+    // Memory-Mapped Bus Decoding Layer
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            reg_ctrl       <= 32'h0;
-            reg_key        <= 32'h0;
-            reg_data_in    <= 32'h0;
-            internal_valid <= 1'b0;
+            reg_control       <= 32'h0;
+            reg_key           <= 32'h0;
+            reg_mailbox       <= 32'h0;
+            reg_config_rounds <= 4'd10; // Default out of reset to 10 rounds
+            core_valid_pulse  <= 1'b0;
+            bus_ready         <= 1'b0;
+            bus_rdata         <= 32'h0;
         end else begin
-            internal_valid <= 1'b0; // Default pulse
-            
-            if (bus_sel && bus_write) begin
-                case (addr_select)
-                    ADDR_CTRL: reg_ctrl    <= bus_wdata;
-                    ADDR_KEY:  reg_key     <= bus_wdata;
-                    ADDR_DATA: begin
-                        reg_data_in    <= bus_wdata;
-                        internal_valid <= 1'b1; // Trigger core loading step
-                    end
-                    default: ;
-                endcase
-            end
-            
-            // Capture completion flag into control register Status Bit (Bit 1)
-            if (core_mem_valid) begin
-                reg_ctrl[1] <= 1'b1; 
-            end else if (bus_sel && bus_write && (addr_select == ADDR_CTRL)) begin
-                reg_ctrl[1] <= bus_wdata[1]; // Allow CPU to clear status bit
+            core_valid_pulse <= 1'b0;
+            bus_ready        <= 1'b0;
+
+            if (bus_sel) begin
+                bus_ready <= 1'b1;
+                if (bus_write) begin
+                    case (bus_addr[4:0])
+                        5'h00: reg_control <= bus_wdata;
+                        5'h04: reg_key     <= bus_wdata;
+                        5'h08: begin
+                            reg_mailbox      <= bus_wdata;
+                            core_valid_pulse <= 1'b1; // Trigger data processing stride
+                        end
+                        5'h10: reg_config_rounds <= bus_wdata[3:0]; // Map configurations to 0x10
+                        default: ;
+                    endcase
+                end else begin
+                    case (bus_addr[4:0])
+                        5'h00: bus_rdata <= reg_control;
+                        5'h04: bus_rdata <= reg_key;
+                        5'h0C: bus_rdata <= core_out;
+                        5'h10: bus_rdata <= {28'h0, reg_config_rounds};
+                        default: bus_rdata <= 32'h0;
+                    endcase
+                end
             end
         end
     end
 
-    // 2. Bus Read Operations (CPU reading from registers)
-    always @(*) begin
-        bus_rdata = 32'h0;
-        bus_ready = 1'b0;
-        
-        if (bus_sel) begin
-            bus_ready = 1'b1; // Single-cycle bus response acknowledgment
-            if (!bus_write) begin
-                case (addr_select)
-                    ADDR_CTRL: bus_rdata = reg_ctrl;
-                    ADDR_KEY:  bus_rdata = reg_key;
-                    ADDR_DATA: bus_rdata = reg_data_in;
-                    ADDR_OUT:  bus_rdata = core_mem_out;
-                    default:   bus_rdata = 32'h0;
-                endcase
-            end
+    // Maintain operational status registers
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // status tracking reset logic
+        end else if (core_ready) begin
+            reg_control <= 32'h1; // Mark transaction done
+        end else if (core_valid_pulse) begin
+            reg_control <= 32'h0; // Core busy processing
         end
     end
 
