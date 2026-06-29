@@ -24,7 +24,7 @@ module secure_fabric_core (
     reg [1:0]  next_state;
     reg [31:0] block_reg_0, block_reg_1, block_reg_2, block_reg_3;
     reg [1:0]  load_counter;
-    reg [3'd0] round_counter; // Tracks the current mathematical loop round
+    reg [3:0]  round_counter; // Fixed bit-range syntax [MSB:LSB]
 
     // Non-linear Substitution Box (S-Box) Transformation Function
     function [7:0] sbox_transform (input [7:0] byte_in);
