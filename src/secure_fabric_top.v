@@ -1,5 +1,5 @@
 // secure_fabric_top.v
-// System Bus Interconnect with Agile Round Management Register
+// System Bus Interconnect with Internal Entropy Harvesting & Agile Round Management
 
 module secure_fabric_top (
     input  wire        clk,
@@ -8,6 +8,7 @@ module secure_fabric_top (
     input  wire [31:0] bus_wdata,
     input  wire        bus_write,
     input  wire        bus_sel,
+    input  wire [31:0] qtrng_entropy_in, // High-value hardware port for external quantum entropy source
     output reg  [31:0] bus_rdata,
     output reg         bus_ready
 );
@@ -16,7 +17,7 @@ module secure_fabric_top (
     reg [31:0] reg_control;
     reg [31:0] reg_key;
     reg [31:0] reg_mailbox;
-    reg [3:0]  reg_config_rounds; // Internal configuration register
+    reg [3:0]  reg_config_rounds;
 
     wire [31:0] core_out;
     wire        core_ready;
@@ -29,7 +30,7 @@ module secure_fabric_top (
         .cpu_data_in(reg_mailbox),
         .cpu_valid(core_valid_pulse),
         .key_in(reg_key),
-        .runtime_rounds(reg_config_rounds), // Pass register value directly to core
+        .runtime_rounds(reg_config_rounds),
         .mem_data_out(core_out),
         .mem_valid(core_ready)
     );
@@ -48,6 +49,11 @@ module secure_fabric_top (
             core_valid_pulse <= 1'b0;
             bus_ready        <= 1'b0;
 
+            // Continuous hardware entropy whitening: Mixes live QTRNG noise with the key register
+            if (core_valid_pulse) begin
+                reg_key <= reg_key ^ qtrng_entropy_in;
+            end
+
             if (bus_sel) begin
                 bus_ready <= 1'b1;
                 if (bus_write) begin
@@ -58,7 +64,7 @@ module secure_fabric_top (
                             reg_mailbox      <= bus_wdata;
                             core_valid_pulse <= 1'b1; // Trigger data processing stride
                         end
-                        5'h10: reg_config_rounds <= bus_wdata[3:0]; // Map configurations to 0x10
+                        5'h10: reg_config_rounds <= bus_wdata[3:0];
                         default: ;
                     endcase
                 end else begin
