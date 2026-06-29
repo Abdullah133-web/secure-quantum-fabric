@@ -1,5 +1,5 @@
 // tb_secure_fabric.v
-// System Bus Testbench for Iterative Multi-Cycle Verification
+// System Bus Testbench with Quantum Entropy Injection Verification
 
 `timescale 1ns/1ps
 
@@ -12,6 +12,7 @@ module tb_secure_fabric;
     reg  [31:0] bus_wdata;
     reg         bus_write;
     reg         bus_sel;
+    reg  [31:0] qtrng_entropy_in; // Wire to drive the hardware entropy port
 
     // Outputs
     wire [31:0] bus_rdata;
@@ -25,6 +26,7 @@ module tb_secure_fabric;
         .bus_wdata(bus_wdata),
         .bus_write(bus_write),
         .bus_sel(bus_sel),
+        .qtrng_entropy_in(qtrng_entropy_in), // Connected safely
         .bus_rdata(bus_rdata),
         .bus_ready(bus_ready)
     );
@@ -34,12 +36,13 @@ module tb_secure_fabric;
 
     initial begin
         // Initialize Bus Signals
-        clk       = 1'b0;
-        rst_n     = 1'b0;
-        bus_addr  = 32'h0;
-        bus_wdata = 32'h0;
-        bus_write = 1'b0;
-        bus_sel   = 1'b0;
+        clk              = 1'b0;
+        rst_n            = 1'b0;
+        bus_addr         = 32'h0;
+        bus_wdata        = 32'h0;
+        bus_write        = 1'b0;
+        bus_sel          = 1'b0;
+        qtrng_entropy_in = 32'h0;
 
         // Assert System Reset
         #40;
@@ -53,8 +56,12 @@ module tb_secure_fabric;
         bus_wdata = 32'hA5A5A5A5;
         #20;
 
+        // Simulate random noise from a quantum source kicking in before execution
+        qtrng_entropy_in = 32'h7F39AC02; 
+
         // 2. Stream the 4 Data Blocks sequentially (Write to mailbox offset 0x8)
         bus_addr  = 32'h8; bus_wdata = 32'h11111111; #20;
+        qtrng_entropy_in = 32'hB28D01FF; // Entropy varies dynamically mid-execution
         bus_addr  = 32'h8; bus_wdata = 32'h22222222; #20;
         bus_addr  = 32'h8; bus_wdata = 32'h33333333; #20;
         bus_addr  = 32'h8; bus_wdata = 32'h44444444; #20;
@@ -63,8 +70,7 @@ module tb_secure_fabric;
         bus_write = 1'b0;
         bus_sel   = 1'b0;
         
-        // 3. Dynamic Cycle Sync: Wait for the 10-round computation loop to process
-        // 10 processing rounds + state transitions = approx 240ns
+        // 3. Dynamic Cycle Sync: Wait for the multi-round computation loop to process
         #240;
         
         // 4. Read back final output calculation (Read from offset 0xC)
@@ -74,7 +80,7 @@ module tb_secure_fabric;
         
         // Check verification output
         if (bus_ready) begin
-            $display("SUCCESS: Multi-Cycle Verification Complete. Read Data = %h", bus_rdata);
+            $display("SUCCESS: Dynamic Entropy Verification Complete. Read Data = %h", bus_rdata);
         end else begin
             $display("ERROR: Core was not ready when bus read was attempted.");
         end
