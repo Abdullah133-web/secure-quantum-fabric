@@ -7,7 +7,7 @@ module secure_fabric_core (
     input  wire [31:0] cpu_data_in,
     input  wire        cpu_valid,
     input  wire [31:0] key_in,
-    input  wire [3:0]  runtime_rounds, // New input from bus configuration
+    input  wire [3:0]  runtime_rounds,
     output reg  [31:0] mem_data_out,
     output reg         mem_valid
 );
@@ -73,4 +73,35 @@ module secure_fabric_core (
             else if (current_state == STATE_IDLE) begin
                 load_counter  <= 2'b00;
                 round_counter <= 4'd0;
-                
+            end
+        end
+    end
+
+    // Combinational Next-State Logic Layer
+    always @(*) begin
+        next_state   = current_state;
+        mem_data_out = 32'h0;
+        mem_valid    = 1'b0;
+        
+        case (current_state)
+            STATE_IDLE: begin
+                if (cpu_valid) next_state = STATE_LOAD;
+            end
+            STATE_LOAD: begin
+                if (load_counter == 2'b11 && cpu_valid) next_state = STATE_PROCESS;
+            end
+            STATE_PROCESS: begin
+                if (round_counter == (runtime_rounds - 1'b1)) begin
+                    next_state = STATE_DONE;
+                end
+            end
+            STATE_DONE: begin
+                mem_data_out = (block_reg_0 ^ block_reg_1 ^ block_reg_2 ^ block_reg_3) ^ key_in;
+                mem_valid    = 1'b1;
+                next_state   = STATE_IDLE;
+            end
+            default: next_state = STATE_IDLE;
+        endcase
+    end
+
+endmodule
