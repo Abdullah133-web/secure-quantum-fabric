@@ -38,4 +38,5 @@ module mix_columns (
             state_out[base_idx + 0  +: 8] = gfm3(s0) ^ s1 ^ s2 ^ gfm2(s3);
         end
     end
-    
+
+endmodule
