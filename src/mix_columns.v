@@ -24,7 +24,8 @@ module mix_columns (
     
     always @(*) begin
         for (col = 0; col < 4; col = col + 1) begin
-            base_idx = (3 - col) * 32;
+            // Pure 6-bit explicit multiplication width casting
+            base_idx = (6'd3 - col[5:0]) * 6'd32;
 
             s3 = state_in[base_idx + 0  +: 8];
             s2 = state_in[base_idx + 8  +: 8];
@@ -37,4 +38,4 @@ module mix_columns (
             state_out[base_idx + 0  +: 8] = gfm3(s0) ^ s1 ^ s2 ^ gfm2(s3);
         end
     end
-endmodule
+    
