@@ -1,5 +1,5 @@
 // secure_fabric_core.v
-// Crypto-Agile Multi-Cycle Core with Programmable Round Scalability
+// Crypto-Agile Multi-Cycle Core with Hardware-Accelerated Transformations
 
 module secure_fabric_core (
     input  wire        clk,
@@ -24,16 +24,36 @@ module secure_fabric_core (
     reg [1:0]  load_counter;
     reg [3:0]  round_counter;
 
-    // Non-linear Substitution Box (S-Box) Transformation Function
-    function [7:0] sbox_transform (input [7:0] byte_in);
-        case (byte_in)
-            8'h00: sbox_transform = 8'h63; 8'h01: sbox_transform = 8'h7c;
-            8'h02: sbox_transform = 8'h77; 8'h03: sbox_transform = 8'h7b;
-            8'h04: sbox_transform = 8'hf2; 8'h05: sbox_transform = 8'h6b;
-            8'h06: sbox_transform = 8'h6f; 8'h07: sbox_transform = 8'hc5;
-            default: sbox_transform = byte_in ^ 8'h99; 
-        endcase
-    endfunction
+    // --- Sub-module Interconnection Wiring ---
+    wire [127:0] state_matrix_in;
+    wire [127:0] shifted_state;
+    wire [127:0] mixed_state;
+    wire [1407:0] all_round_keys;
+    wire [127:0] current_round_key;
+
+    // Pack individual 32-bit registers into a single 128-bit AES block
+    assign state_matrix_in = {block_reg_0, block_reg_1, block_reg_2, block_reg_3};
+
+    // Instantiate your new key expansion scheduling block
+    // Expands your key_in (padded to 128-bit) into all round sub-keys
+    key_expansion ke_inst (
+        .master_key({4{key_in}}),
+        .round_keys(all_round_keys)
+    );
+
+    // Dynamic round key slice selection based on current round_counter
+    assign current_round_key = all_round_keys[(round_counter * 128) +: 128];
+
+    // Instantiate your hardware-accelerated state transformations
+    shift_rows sr_inst (
+        .state_in(state_matrix_in), 
+        .state_out(shifted_state)
+    );
+    
+    mix_columns mc_inst (
+        .state_in(shifted_state), 
+        .state_out(mixed_state)
+    );
 
     // Sequential Logic Layer
     always @(posedge clk or negedge rst_n) begin
@@ -60,15 +80,20 @@ module secure_fabric_core (
             else if (current_state == STATE_PROCESS) begin
                 round_counter <= round_counter + 1'b1;
                 
-                block_reg_0 <= block_reg_0 + block_reg_1;
-                block_reg_1 <= block_reg_1 + block_reg_2;
-                block_reg_2 <= block_reg_2 + block_reg_3;
-                block_reg_3 <= block_reg_3 + 32'h5A5A5A5A;
-                
-                block_reg_0[31:24] <= sbox_transform(block_reg_0[31:24]);
-                block_reg_1[31:24] <= sbox_transform(block_reg_1[31:24]);
-                block_reg_2[31:24] <= sbox_transform(block_reg_2[31:24]);
-                block_reg_3[31:24] <= sbox_transform(block_reg_3[31:24]);
+                // Perform hardware transformation round mixed with the round key schedule
+                if (round_counter < (runtime_rounds - 1'b1)) begin
+                    // Standard processing round: ShiftRows -> MixColumns -> AddRoundKey
+                    block_reg_0 <= mixed_state[127:96] ^ current_round_key[127:96];
+                    block_reg_1 <= mixed_state[95:64]  ^ current_round_key[95:64];
+                    block_reg_2 <= mixed_state[63:32]  ^ current_round_key[63:32];
+                    block_reg_3 <= mixed_state[31:0]   ^ current_round_key[31:0];
+                end else begin
+                    // Final round: Omits MixColumns layer entirely per crypto specification
+                    block_reg_0 <= shifted_state[127:96] ^ current_round_key[127:96];
+                    block_reg_1 <= shifted_state[95:64]  ^ current_round_key[95:64];
+                    block_reg_2 <= shifted_state[63:32]  ^ current_round_key[63:32];
+                    block_reg_3 <= shifted_state[31:0]   ^ current_round_key[31:0];
+                end
             end 
             else if (current_state == STATE_IDLE) begin
                 load_counter  <= 2'b00;
@@ -79,7 +104,7 @@ module secure_fabric_core (
 
     // Combinational Next-State Logic Layer
     always @(*) begin
-        next_state   = current_state;
+        next_state    = current_state;
         mem_data_out = 32'h0;
         mem_valid    = 1'b0;
         
@@ -96,7 +121,8 @@ module secure_fabric_core (
                 end
             end
             STATE_DONE: begin
-                mem_data_out = (block_reg_0 ^ block_reg_1 ^ block_reg_2 ^ block_reg_3) ^ key_in;
+                // Format the final scrambled block reduction layer
+                mem_data_out = (block_reg_0 ^ block_reg_1 ^ block_reg_2 ^ block_reg_3);
                 mem_valid    = 1'b1;
                 next_state   = STATE_IDLE;
             end
